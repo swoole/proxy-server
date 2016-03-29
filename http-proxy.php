@@ -15,7 +15,6 @@ class HttpProxyServer
             HttpProxyServer::$clients[$fd] = $client;
             $client->on('close', function ($cli) use ($fd)
             {
-                //echo "http[{$cli->sock}] client close\n";
                 self::removeClient($fd);
             });
         }
@@ -34,8 +33,12 @@ class HttpProxyServer
     }
 }
 
-$serv = new swoole_http_server('127.0.0.1', 9510, SWOOLE_PROCESS);
-$serv->set(array('worker_num' => 4));
+$serv = new swoole_http_server('127.0.0.1', 9510, SWOOLE_BASE);
+$serv->set(array('worker_num' => 1));
+
+$serv->on('Close', function($serv, $fd, $reactorId) {
+    HttpProxyServer::removeClient($fd);
+});
 
 $serv->on('Request', function (swoole_http_request $req, swoole_http_response $resp)
 {
