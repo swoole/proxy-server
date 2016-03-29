@@ -1,21 +1,21 @@
 <?php
 class ProxyServer
 {
-    protected $clients;
+    protected $frontends;
     protected $backends;
     /**
      * @var swoole_server
      */
     protected $serv;
     protected $index = 0;
-
+    protected $mode = SWOOLE_BASE;
     protected $backendServer = array('host' => '127.0.0.1', 'port' => '80');
 
     function run()
     {
-        $serv = new swoole_server("127.0.0.1", 9509, SWOOLE_BASE);
+        $serv = new swoole_server("127.0.0.1", 9509, $this->mode);
         $serv->set(array(
-            'worker_num' => 8, //worker process num
+            //'worker_num' => 8, //worker process num
             'backlog' => 128, //listen backlog
             //'open_tcp_keepalive' => 1,
             //'log_file' => '/tmp/swoole.log', //swoole error log
@@ -41,20 +41,20 @@ class ProxyServer
     function onClose($serv, $fd, $from_id)
     {
         //清理掉后端连接
-        if (isset($this->clients[$fd]))
+        if (isset($this->frontends[$fd]))
         {
-            $backend_socket = $this->clients[$fd];
-            unset($this->clients[$fd]);
+            $backend_socket = $this->frontends[$fd];
+            unset($this->frontends[$fd]);
             $backend_socket->close();
             unset($this->backends[$backend_socket->sock]);
         }
-        echo "client[$fd] close\n";
+        echo "onClose: frontend[$fd]\n";
     }
 
     function onReceive($serv, $fd, $from_id, $data)
     {
         //尚未建立连接
-        if (!isset($this->clients[$fd]))
+        if (!isset($this->frontends[$fd]))
         {
             //连接到后台服务器
             $socket = new swoole_client(SWOOLE_SOCK_TCP, SWOOLE_SOCK_ASYNC);
@@ -73,9 +73,9 @@ class ProxyServer
 
             $socket->on('close', function (swoole_client $socket) use ($fd)
             {
-                echo "INFO: backend connection close\n";
+                echo "onClose: backend[{$socket->sock}]\n";
                 unset($this->backends[$socket->sock]);
-                unset($this->clients[$fd]);
+                unset($this->frontends[$fd]);
                 $this->serv->close($fd);
             });
 
@@ -89,7 +89,7 @@ class ProxyServer
             if ($socket->connect($this->backendServer['host'], $this->backendServer['port']))
             {
                 $this->backends[$socket->sock] = $fd;
-                $this->clients[$fd] = $socket;
+                $this->frontends[$fd] = $socket;
             }
             else
             {
@@ -104,7 +104,7 @@ class ProxyServer
             /**
              * @var $socket swoole_client
              */
-            $socket = $this->clients[$fd];
+            $socket = $this->frontends[$fd];
             $socket->send($data);
         }
     }
