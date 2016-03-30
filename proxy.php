@@ -8,7 +8,7 @@ class ProxyServer
      */
     protected $serv;
     protected $index = 0;
-    protected $mode = SWOOLE_BASE;
+    protected $mode = SWOOLE_PROCESS;
     protected $backendServer = array('host' => '127.0.0.1', 'port' => '80');
 
     function run()
@@ -44,9 +44,9 @@ class ProxyServer
         if (isset($this->frontends[$fd]))
         {
             $backend_socket = $this->frontends[$fd];
-            unset($this->frontends[$fd]);
             $backend_socket->close();
             unset($this->backends[$backend_socket->sock]);
+            unset($this->frontends[$fd]);
         }
         echo "onClose: frontend[$fd]\n";
     }
