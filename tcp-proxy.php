@@ -8,7 +8,7 @@ class ProxyServer
      */
     protected $serv;
     protected $index = 0;
-    protected $mode = SWOOLE_PROCESS;
+    protected $mode = SWOOLE_BASE;
     protected $backendServer = array('host' => '127.0.0.1', 'port' => '80');
 
     function run()
@@ -44,6 +44,7 @@ class ProxyServer
         if (isset($this->frontends[$fd]))
         {
             $backend_socket = $this->frontends[$fd];
+            $backend_socket->closing = true;
             $backend_socket->close();
             unset($this->backends[$backend_socket->sock]);
             unset($this->frontends[$fd]);
@@ -58,7 +59,7 @@ class ProxyServer
         {
             //连接到后台服务器
             $socket = new swoole_client(SWOOLE_SOCK_TCP, SWOOLE_SOCK_ASYNC);
-
+            $socket->closing = false;
             $socket->on('connect', function (swoole_client $socket) use ($data)
             {
                 $socket->send($data);
@@ -76,7 +77,10 @@ class ProxyServer
                 echo "onClose: backend[{$socket->sock}]\n";
                 unset($this->backends[$socket->sock]);
                 unset($this->frontends[$fd]);
-                $this->serv->close($fd);
+                if (!$socket->closing)
+                {
+                    $this->serv->close($fd);
+                }
             });
 
             $socket->on('receive', function (swoole_client $socket, $_data) use ($fd)
