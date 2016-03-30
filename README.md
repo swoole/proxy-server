@@ -10,11 +10,13 @@ pecl install swoole
 Run
 ====
 ```shell
-php proxy.php
+php tcp-proxy.php
+php http-proxy.php
 ```
 
 Test
 ===
 ```shell
 ab -c 1000 -n 100000 -k http://127.0.0.1:9509/
+ab -c 1000 -n 100000 -k http://127.0.0.1:9510/
 ```
