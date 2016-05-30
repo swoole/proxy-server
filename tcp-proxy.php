@@ -74,7 +74,7 @@ class ProxyServer
 
             $socket->on('close', function (swoole_client $socket) use ($fd)
             {
-                //echo "onClose: backend[{$socket->sock}]\n";
+                echo "onClose: backend[{$socket->sock}]\n";
                 unset($this->backends[$socket->sock]);
                 unset($this->frontends[$fd]);
                 if (!$socket->closing)
