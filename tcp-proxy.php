@@ -16,7 +16,7 @@ class ProxyServer
         $serv = new swoole_server("127.0.0.1", 9509, $this->mode);
         $serv->set(array(
             //'worker_num' => 8, //worker process num
-            'backlog' => 128, //listen backlog
+            //'backlog' => 128, //listen backlog
             //'open_tcp_keepalive' => 1,
             //'log_file' => '/tmp/swoole.log', //swoole error log
         ));
@@ -74,7 +74,7 @@ class ProxyServer
 
             $socket->on('close', function (swoole_client $socket) use ($fd)
             {
-                echo "onClose: backend[{$socket->sock}]\n";
+                //echo "onClose: backend[{$socket->sock}]\n";
                 unset($this->backends[$socket->sock]);
                 unset($this->frontends[$fd]);
                 if (!$socket->closing)
