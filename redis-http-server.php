@@ -17,9 +17,8 @@ $serv->on('Close', function ($serv, $fd, $reactorId)
     //清理掉后端连接
     if (isset(HttpRedisServer::$backends[$fd]))
     {
-        //$backend_socket = HttpRedisServer::$frontends[$fd];
-        //$backend_socket->close();
-        unset(HttpRedisServer::$backends[$fd]);
+        $redis = HttpRedisServer::$backends[$fd];
+        $redis->close();
     }
 });
 

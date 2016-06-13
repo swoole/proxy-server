@@ -15,7 +15,7 @@ class ProxyServer
     {
         $serv = new swoole_server("127.0.0.1", 9509, $this->mode);
         $serv->set(array(
-            //'worker_num' => 8, //worker process num
+            'worker_num' => 8, //worker process num
             //'backlog' => 128, //listen backlog
             //'open_tcp_keepalive' => 1,
             //'log_file' => '/tmp/swoole.log', //swoole error log
