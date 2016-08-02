@@ -16,6 +16,8 @@ php http-proxy.php
 
 Test
 ===
+* Ubuntu 14.04 + inter I5 4 core + 8G Memory 
+
 ```shell
 ab -c 1000 -n 1000000 -k http://127.0.0.1:9509/
 ab -c 1000 -n 1000000 -k http://127.0.0.1:9509/
