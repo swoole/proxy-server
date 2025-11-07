@@ -1,24 +1,24 @@
 <?php
 
+use Swoole\Async\Client;
+use Swoole\Server;
+
 class ProxyServer
 {
-    protected $frontends;
-    protected $backends;
-    /**
-     * @var swoole_server
-     */
-    protected $serv;
-    protected $index = 0;
-    protected $mode = SWOOLE_BASE;
-    protected $backendServer = array('host' => '127.0.0.1', 'port' => '80');
+    protected array $frontends;
+    protected array $backends;
 
-    public function run()
+    protected $serv;
+    protected int $index = 0;
+    protected int $mode = SWOOLE_BASE;
+    protected int $workerNum = 1;
+    protected array $backendServer = array('host' => '127.0.0.1', 'port' => '80');
+
+    public function run(): void
     {
-        $serv = new swoole_server("127.0.0.1", 9509, $this->mode);
+        $serv = new Server("127.0.0.1", 9509, $this->mode);
         $serv->set(array(
-            'worker_num' => 8, //worker process num
-            //'backlog' => 128, //listen backlog
-            //'open_tcp_keepalive' => 1,
+            'worker_num' => $this->workerNum,
             //'log_file' => '/tmp/swoole.log', //swoole error log
         ));
         $serv->on('WorkerStart', array($this, 'onStart'));
@@ -28,20 +28,19 @@ class ProxyServer
         $serv->start();
     }
 
-    public function onStart($serv)
+    public function onStart($serv): void
     {
         $this->serv = $serv;
         echo "Server: start.Swoole version is [" . SWOOLE_VERSION . "]\n";
     }
 
-    public function onShutdown($serv)
+    public function onShutdown($serv): void
     {
         echo "Server: onShutdown\n";
     }
 
-    public function onClose($serv, $fd, $from_id)
+    public function onClose($serv, $fd, $reactor_id): void
     {
-        //清理掉后端连接
         if (isset($this->frontends[$fd])) {
             $backend_socket = $this->frontends[$fd];
             $backend_socket->closing = true;
@@ -52,24 +51,24 @@ class ProxyServer
         echo "onClose: frontend[$fd]\n";
     }
 
-    public function onReceive($serv, $fd, $from_id, $data)
+    public function onReceive($serv, $fd, $reactor_id, $data)
     {
         //尚未建立连接
         if (!isset($this->frontends[$fd])) {
             //连接到后台服务器
-            $socket = new swoole_client(SWOOLE_SOCK_TCP, SWOOLE_SOCK_ASYNC);
+            $socket = new Client(SWOOLE_SOCK_TCP);
             $socket->closing = false;
-            $socket->on('connect', function (swoole_client $socket) use ($data) {
+            $socket->on('connect', function (Client $socket) use ($data) {
                 $socket->send($data);
             });
 
-            $socket->on('error', function (swoole_client $socket) use ($fd) {
+            $socket->on('error', function (Client $socket) use ($fd) {
                 echo "ERROR: connect to backend server failed\n";
                 $this->serv->send($fd, "backend server not connected. please try reconnect.");
                 $this->serv->close($fd);
             });
 
-            $socket->on('close', function (swoole_client $socket) use ($fd) {
+            $socket->on('close', function (Client $socket) use ($fd) {
                 echo "onClose: backend[{$socket->sock}]\n";
                 unset($this->backends[$socket->sock]);
                 unset($this->frontends[$fd]);
@@ -78,9 +77,7 @@ class ProxyServer
                 }
             });
 
-            $socket->on('receive', function (swoole_client $socket, $_data) use ($fd) {
-                //PHP-5.4以下版本可能不支持此写法，匿名函数不能调用$this
-                //可以修改为类静态变量
+            $socket->on('receive', function (Client $socket, $_data) use ($fd) {
                 $this->serv->send($fd, $_data);
             });
 
@@ -92,11 +89,9 @@ class ProxyServer
                 $this->serv->send($fd, "backend server not connected. please try reconnect.");
                 $this->serv->close($fd);
             }
-        }
-        //已经有连接，可以直接发送数据
-        else {
+        } else {
             /**
-             * @var $socket swoole_client
+             * @var $socket Client
              */
             $socket = $this->frontends[$fd];
             $socket->send($data);
