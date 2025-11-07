@@ -2,11 +2,13 @@
 
 use Swoole\Async\Client;
 use Swoole\Server;
+use Swoole\Timer;
 
 class ProxyServer
 {
-    protected array $frontends;
-    protected array $backends;
+    protected array $upstreams;
+    protected array $rx_buffer;
+    protected array $closing_fds;
 
     protected $serv;
     protected int $index = 0;
@@ -22,6 +24,7 @@ class ProxyServer
             //'log_file' => '/tmp/swoole.log', //swoole error log
         ));
         $serv->on('WorkerStart', array($this, 'onStart'));
+        $serv->on('Connect', [$this, 'onConnect']);
         $serv->on('Receive', array($this, 'onReceive'));
         $serv->on('Close', array($this, 'onClose'));
         $serv->on('WorkerStop', array($this, 'onShutdown'));
@@ -31,7 +34,7 @@ class ProxyServer
     public function onStart($serv): void
     {
         $this->serv = $serv;
-        echo "Server: start.Swoole version is [" . SWOOLE_VERSION . "]\n";
+        echo "Server is started, SWOOLE version is [" . SWOOLE_VERSION . "]\n";
     }
 
     public function onShutdown($serv): void
@@ -39,27 +42,37 @@ class ProxyServer
         echo "Server: onShutdown\n";
     }
 
-    public function onClose($serv, $fd, $reactor_id): void
-    {
-        if (isset($this->frontends[$fd])) {
-            $backend_socket = $this->frontends[$fd];
-            $backend_socket->closing = true;
-            $backend_socket->close();
-            unset($this->backends[$backend_socket->sock]);
-            unset($this->frontends[$fd]);
-        }
-        echo "onClose: frontend[$fd]\n";
+    public function onConnect($serv, $fd): void {
+        $this->rx_buffer[$fd] = [];
     }
 
-    public function onReceive($serv, $fd, $reactor_id, $data)
+    public function onClose($serv, $fd, $reactor_id): void
     {
-        //尚未建立连接
-        if (!isset($this->frontends[$fd])) {
-            //连接到后台服务器
+        if (isset($this->upstreams[$fd])) {
+            $socket = $this->upstreams[$fd];
+            $this->closing_fds[$socket->sock] = true;
+            $socket->close();
+            unset($this->upstreams[$fd]);
+        }
+        unset($this->rx_buffer[$fd]);
+    }
+
+    protected function getSocket($fd): Client
+    {
+        return $this->upstreams[$fd];
+    }
+
+    public function onReceive($serv, $fd, $reactor_id, $data): void
+    {
+        if (!isset($this->upstreams[$fd])) {
             $socket = new Client(SWOOLE_SOCK_TCP);
-            $socket->closing = false;
-            $socket->on('connect', function (Client $socket) use ($data) {
-                $socket->send($data);
+            $this->upstreams[$fd] = $socket;
+            $this->rx_buffer[$fd][] = $data;
+            $socket->on('connect', function (Client $socket) use ($fd) {
+                foreach ($this->rx_buffer[$fd] as $data) {
+                    $socket->send($data);
+                }
+                $this->closing_fds[$socket->sock] = false;
             });
 
             $socket->on('error', function (Client $socket) use ($fd) {
@@ -69,32 +82,30 @@ class ProxyServer
             });
 
             $socket->on('close', function (Client $socket) use ($fd) {
-                echo "onClose: backend[{$socket->sock}]\n";
-                unset($this->backends[$socket->sock]);
-                unset($this->frontends[$fd]);
-                if (!$socket->closing) {
+                if (!$this->closing_fds[$socket->sock]) {
                     $this->serv->close($fd);
                 }
+                unset($this->upstreams[$fd]);
+                unset($this->rx_buffer[$fd]);
+                unset($this->closing_fds[$socket->sock]);
             });
 
             $socket->on('receive', function (Client $socket, $_data) use ($fd) {
                 $this->serv->send($fd, $_data);
             });
 
-            if ($socket->connect($this->backendServer['host'], $this->backendServer['port'])) {
-                $this->backends[$socket->sock] = $fd;
-                $this->frontends[$fd] = $socket;
-            } else {
+            if (!$socket->connect($this->backendServer['host'], $this->backendServer['port'])) {
                 echo "ERROR: cannot connect to backend server.\n";
                 $this->serv->send($fd, "backend server not connected. please try reconnect.");
                 $this->serv->close($fd);
             }
         } else {
-            /**
-             * @var $socket Client
-             */
-            $socket = $this->frontends[$fd];
-            $socket->send($data);
+            $socket = $this->getSocket($fd);
+            if ($socket->isConnected()) {
+                $socket->send($data);
+            } else {
+                $this->rx_buffer[$fd][] = $data;
+            }
         }
     }
 }

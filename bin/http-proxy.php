@@ -37,6 +37,7 @@ $serv->on('Close', function ($serv, $fd, $reactorId) {
 });
 
 $serv->on('Request', function (request $req, response $resp) {
+    // HTTP does not support concurrency. When processing a request and there is no response, the client will not send a new request
     $client = HttpProxyServer::getClient($req->fd);
     if ($req->server['request_method'] == 'GET') {
         $rs = $client->get($req->server['request_uri']);
